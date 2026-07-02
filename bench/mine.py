@@ -47,6 +47,20 @@ CLOSES_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Generated / non-source files that are never a meaningful retrieval target even when a PR touches
+# them (dependency bumps, lockfiles). Dropped from gold_files; a query with no gold left is skipped.
+NON_SOURCE_GOLD = {
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-workspace.yaml",
+    "poetry.lock",
+    "Cargo.lock",
+    "composer.lock",
+    "go.sum",
+    "requirements.txt",
+}
+
 DOCS_TEST_RE = re.compile(
     r"(^|/)(docs?|test|tests|__tests__|examples?|benchmarks?)(/|$)"
     r"|\.(md|rst|txt)$"
@@ -191,11 +205,14 @@ def mine(repo: str, alias: str, pin: str, target: int, max_files: int, min_words
         if is_docs_or_test_only(changed_paths):
             continue
 
-        # gold = files that already existed at the pin commit (exclude PR-created files).
+        # gold = files that already existed at the pin commit (exclude PR-created files and
+        # generated non-source files like lockfiles).
         gold = [
             f["filename"]
             for f in files
-            if f["status"] != "added" and gh.file_exists_at(f["filename"], pin)
+            if f["status"] != "added"
+            and f["filename"].rsplit("/", 1)[-1] not in NON_SOURCE_GOLD
+            and gh.file_exists_at(f["filename"], pin)
         ]
         if not gold:
             continue

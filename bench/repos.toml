@@ -10,7 +10,21 @@
 #   pallets/flask (small control), pandas-dev/pandas, scikit-learn/scikit-learn (Python),
 #   vitejs/vite, sveltejs/svelte (TS). NOT django/django (Trac, not GitHub Issues).
 
-# [flask]
-# repo = "pallets/flask"
-# url  = "git@github.com:pallets/flask.git"
-# pin  = ""
+# Chosen 2026-07-02 after measuring fixes/closes linkage yield over ~400 recent closed PRs
+# (see DECISIONS.md). Pins are the latest commit before 2025-01-01, giving ~18 months of
+# post-pin fixes to mine. pandas = Python primary (400K+ LOC); vite = TS.
+
+[pandas]
+repo = "pandas-dev/pandas"
+url  = "git@github.com:pandas-dev/pandas.git"
+pin  = "8fbe6ac83da590acfc58ff83713aac14ab7f900d"  # 2024-12-31
+
+[vite]
+repo = "vitejs/vite"
+url  = "git@github.com:vitejs/vite.git"
+pin  = "a4922537a8d705da7769d30626a0d846511fc124"  # 2024-12-31
+
+# Control / backup candidates (not mined for v1):
+#   pallets/flask       6b054f8 (too small: ~16 linked PRs, cannot reach 40)
+#   scikit-learn        74775ca (88 linked PRs — solid Python backup)
+#   sveltejs/svelte     32348a5 (90 linked PRs — TS backup)
