@@ -1,0 +1,41 @@
+[project]
+name = "cortex"
+version = "0.1.0"
+description = "Local-only hybrid semantic code index and benchmark harness for Claude Code, exposed as an MCP server."
+readme = "README.md"
+requires-python = ">=3.12"
+# NOTE: dependencies are added per-phase as modules start using them (see DECISIONS.md).
+# Phase 0 needs only the CLI framework (typer), the benchmark miner HTTP client (httpx),
+# and gitignore matching (pathspec). Heavy ML/vector/MCP deps land in their phases.
+dependencies = [
+    "typer>=0.15",
+    "httpx>=0.28",
+    "pathspec>=0.12",
+]
+
+[project.scripts]
+cortex = "cortex.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cortex"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

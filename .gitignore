@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# uv / venv
+.venv/
+.python-version.local
+
+# caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# cortex index data lives in ~/.cortex by design, but ignore any stray local copies
+.cortex/
+
+# benchmark raw outputs (kept out of git; datasets ARE committed)
+bench/results/*
+!bench/results/.gitkeep
+
+# local clones of benchmark target repos
+bench/repos/
+
+# env
+.env
+.env.local
+
+# OS
+.DS_Store
