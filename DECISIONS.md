@@ -23,6 +23,19 @@ All performance numbers in this log are measured on:
 - **2026-07-02 — Build backend is `hatchling` with `src/` layout.** `uv init --package` default;
   no reason to deviate.
 
+- **2026-07-02 — Repo pins live in `bench/repos.toml`.** Single source of truth for
+  which repos are mined and the snapshot commit the index is built at. Both `mine.py` (via `--pin`)
+  and `checkout.py` consume it. `base_sha` in the dataset JSONL is the per-PR base (provenance);
+  the repo-level `pin` is the eval snapshot. Rationale: one place to record chosen repos + pins.
+
+### Phase 0 progress
+
+- [x] Task 1 — scaffolding (uv, CLI skeleton, module stubs, tests, DECISIONS). `uv run cortex --help` passes.
+- [x] Task 4 — `bench/checkout.py` (clone over SSH + detached checkout at pin). Written; runs once repos.toml is populated.
+- [ ] Task 2 — choose repos + hand-verify linkage + record pins in `repos.toml`. **Blocked: token.**
+- [ ] Task 3 — run `mine.py`, produce `bench/dataset/{alias}.jsonl` (>=40 queries x2 repos). **Blocked: token.**
+- [ ] Acceptance — manual spot-check of 10 queries/repo.
+
 ### Open items
 
 - **GITHUB_TOKEN not yet available.** No token found in env / `~/.git-credentials` / `gh` (gh not

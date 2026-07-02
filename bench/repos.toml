@@ -1,0 +1,16 @@
+# Benchmark target repos: the single source of truth for which repos are mined and at what
+# snapshot commit the index is built. Populated in Phase 0 task 2 after hand-verifying issue->PR
+# linkage quality (~10 recent closed issues each). SSH urls (the user clones over SSH).
+#
+# `pin` is the commit the index is built at. Mining keeps only PRs merged AFTER the pin's date, so
+# the fix is never already in the index (lookahead safety). Leave pin = "" until chosen; both
+# mine.py (--pin) and checkout.py read the value recorded here.
+#
+# Candidates per PLAN §Phase-0 (pick 2-3, >=40 clean queries each):
+#   pallets/flask (small control), pandas-dev/pandas, scikit-learn/scikit-learn (Python),
+#   vitejs/vite, sveltejs/svelte (TS). NOT django/django (Trac, not GitHub Issues).
+
+# [flask]
+# repo = "pallets/flask"
+# url  = "git@github.com:pallets/flask.git"
+# pin  = ""
