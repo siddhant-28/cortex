@@ -10,6 +10,46 @@ All performance numbers in this log are measured on:
 - **Python:** 3.12.13 (managed by uv)
 - **uv:** 0.11.26
 
+## Phase 1 — COMPLETE (2026-07-02)
+
+- [x] `discovery.py` — os.walk + root `.gitignore` (pathspec) + `.git/` prune; launch extensions
+  only; skip >1 MB, empty, and binary files.
+- [x] `chunker.py` — tree-sitter chunks: module_top / function / class_header / method + line-window
+  fallback. Python + TS/JS extractors.
+- [x] Context prefix + `embed_text` per data model; top-5 imports.
+- [x] `cortex chunk <repo> [--stats] [--dump]`.
+- [x] Fixture tests (Python + TS exact boundaries) + oversized/unparseable cases — 11 tests pass.
+
+**Acceptance (Apple M1 Pro / 16 GB):**
+
+| repo | files | chunked | chunks | AST-file % | throughput |
+|---|---|---|---|---|---|
+| pandas | 1432 | 1432 | 32,807 | **99.9%** | ~31K files/min |
+| vite | 1211 | 1211 | 2,602 | **99.3%** | ~198K files/min |
+
+Both >95% AST bar; both >>5K files/min. Hand-inspected ~20 chunks: whole funcs/methods, class
+headers exclude method bodies, correct fallback windowing (20-line overlap), symbols qualified
+`Class.method`, prefixes correct, no `(path,start,symbol)` collisions.
+
+- **2026-07-02 — Canonical tree-sitter API, not `get_parser().parse()`.** language-pack's
+  `get_parser(...).parse()` rejected both `bytes` and `str` on this version; used
+  `Parser(get_language(name))` + `parse(bytes)`, which works. tree-sitter 0.26.0, language-pack 1.12.2.
+- **2026-07-02 — Empty / whitespace-only files skipped** (discovery skips 0-byte; `chunk_file`
+  returns `[]` for whitespace-only). pandas has ~90 empty test-package `__init__.py`; indexing them
+  produced spurious fallback chunks and dragged AST% to 92.9%. They have nothing to retrieve.
+  AST% is now measured over files that produced ≥1 chunk.
+- **2026-07-02 — module_top spanning >300 lines is fallback-split** (per PLAN's >300-line rule),
+  which is why a handful of all-constant files (`pandas/core/shared_docs.py` 651 L, `pandas/__init__.py`)
+  are the only remaining fallback-only files. Spec-compliant; left as-is.
+- **2026-07-02 — Fixtures excluded from ruff** (`extend-exclude`). `ruff --fix` stripped the
+  intentionally-unused imports from `tests/fixtures/sample.py`, breaking the boundary tests.
+
+### Known limitation (Phase 3 impact)
+
+- **C / Cython gold files are not indexed** (launch = Python + TS/JS only, per non-goals). Affects
+  e.g. pandas `_libs/**/*.c` (query pandas-65903) and any `.pyx`. cortex cannot retrieve them; stock
+  grep can. A fair, logged disadvantage for the benchmark.
+
 ## Phase 0
 
 - **2026-07-02 — Dependencies added per-phase, not all at once.** PLAN §4 pins the full stack, but

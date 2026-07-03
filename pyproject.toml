@@ -11,6 +11,8 @@ dependencies = [
     "typer>=0.15",
     "httpx>=0.28",
     "pathspec>=0.12",
+    "tree-sitter>=0.26.0",
+    "tree-sitter-language-pack>=1.12.2",
 ]
 
 [project.scripts]
@@ -32,6 +34,8 @@ packages = ["src/cortex"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Fixtures are deliberately-shaped test inputs (unused imports, odd layout); never autofix them.
+extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

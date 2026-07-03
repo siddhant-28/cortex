@@ -46,7 +46,9 @@ def checkout_one(alias: str, spec: dict) -> None:
     if not (dest / ".git").exists():
         print(f"[{alias}] cloning {url} ...")
         REPOS_DIR.mkdir(parents=True, exist_ok=True)
-        run(["git", "clone", "--no-checkout", url, str(dest)])
+        # Blobless partial clone: fetch commits + trees but defer file blobs until checkout
+        # materializes the pinned tree. Much faster than a full history clone for large repos.
+        run(["git", "clone", "--filter=blob:none", "--no-checkout", url, str(dest)])
 
     # Ensure the pinned commit is present, then detach onto it.
     run(["git", "fetch", "--quiet", "origin", pin], cwd=dest)
