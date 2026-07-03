@@ -54,6 +54,33 @@ def _is_binary(p: Path) -> bool:
         return True
 
 
+def classify(
+    root: Path, abspath: Path, spec: pathspec.PathSpec | None = None
+) -> SourceFile | None:
+    """Single-file version of the walk filters (for the watcher). None if not indexable."""
+    root = Path(root).resolve()
+    lang = EXT_LANG.get(abspath.suffix)
+    if lang is None:
+        return None
+    try:
+        relf = abspath.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return None
+    if spec is None:
+        spec = load_gitignore(root)
+    if spec.match_file(relf) or relf.startswith(".git/"):
+        return None
+    try:
+        size = abspath.stat().st_size
+    except OSError:
+        return None
+    if size == 0 or size > MAX_BYTES:
+        return None
+    if _is_binary(abspath):
+        return None
+    return SourceFile(path=relf, abspath=abspath, language=lang)
+
+
 def walk(root: str | Path) -> Iterator[SourceFile]:
     """Yield indexable source files under ``root``."""
     root = Path(root).resolve()

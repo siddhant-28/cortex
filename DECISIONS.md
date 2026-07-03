@@ -10,6 +10,41 @@ All performance numbers in this log are measured on:
 - **Python:** 3.12.13 (managed by uv)
 - **uv:** 0.11.26
 
+## Phase 5 — COMPLETE (2026-07-03)
+
+- [x] `indexer.py` — `IncrementalIndexer` shared by build/watch/reconcile: `reconcile()` (full
+  hash-sweep diff+apply), `reindex_path()` / `remove_path()` (single file), all lock-guarded.
+- [x] `build` refactored onto `IncrementalIndexer` (no duplicated diff logic; behavior identical —
+  vite re-run reports "up to date, 0.2s").
+- [x] `watcher.py` — watchdog observer, 0.75s per-path debounce, reindex on change/create/delete.
+- [x] `cortex watch <repo> --alias`; `serve` auto-reconciles + watches every indexed repo in a
+  background thread (handshake stays ~0.9s, unblocked).
+- [x] Manifest gained `root` (absolute repo path) so `serve` knows where to watch; existing
+  manifests migrated in place (no rebuild).
+- [x] Tests: fake-embedder integration (reconcile/reindex/remove + watchdog freshness), 26 pass.
+
+**Acceptance (M1 Pro):**
+
+- [x] Save → retrievable: **875 ms** (< 1.5 s). Single-file reindex skips FTS rebuild — new rows are
+  immediately searchable via LanceDB's flat scan of the unindexed tail (verified).
+- [x] Startup reconcile of pandas after 50 offline changes: **16.7 s** (< 30 s); 1435-file hash
+  sweep + 548 chunks re-embedded (model pre-warmed, as `serve` does).
+- [x] Stress (concurrent queries while editing 12 files): **0 query errors, fresh edits visible,
+  overwritten content gone, no crash.**
+- [x] Crash safety: atomic manifest writes (`os.replace`) + startup hash-sweep reconciliation.
+
+- **2026-07-03 — Single-file reindex does NOT rebuild the FTS index.** Verified new rows are
+  searchable immediately after upsert (LanceDB flat-scans the unindexed fragment). Rebuilding FTS
+  over 32807 rows per save would blow the <1.5s budget. FTS is folded in / compacted periodically.
+- **2026-07-03 — Safe buffered compaction (fixes index bloat under churn).** Rapid churn (100 file
+  rewrites in the reconcile test) bloated the index 274→561 MB via version accumulation, because the
+  earlier `optimize()` used default (multi-day) retention. Changed `optimize()` to
+  `cleanup_older_than=timedelta(seconds=60)` — safe (a 60s buffer far exceeds any read; validated it
+  prunes 81→1 versions without corruption) and NOT the `=0` that corrupted in Phase 2. The watcher
+  also compacts off-thread every 50 reindexes to bound growth. Compacting production: **561→137 MB.**
+- **2026-07-03 — `serve` auto-watches in a background thread.** Reconcile + watcher start happen in
+  the same daemon thread that warms the model, so the MCP initialize handshake isn't blocked.
+
 ## Phase 4 — COMPLETE (2026-07-03)
 
 - [x] `mcp_server.py` — FastMCP (mcp 1.28.1) over stdio, exactly two tools: `search_code` and

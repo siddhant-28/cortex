@@ -7,6 +7,8 @@ once; ``serve()`` warms it in a background thread so the first query isn't a col
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 
 from .config import load_config
@@ -15,6 +17,7 @@ from .store import Store, list_manifests
 
 _cfg = load_config()
 _retriever = Retriever(_cfg)
+_watchers: list = []  # keep references so observers aren't garbage-collected
 
 mcp = FastMCP("cortex")
 
@@ -45,9 +48,27 @@ def index_status() -> str:
     )
 
 
+def _warm_and_watch() -> None:
+    from .indexer import IncrementalIndexer
+    from .watcher import RepoWatcher
+
+    _ = _retriever.embedder.model  # warm the model
+    # Reconcile any offline changes, then watch each indexed repo whose root still exists.
+    for m in list_manifests(_cfg):
+        if not (m.root and Path(m.root).is_dir()):
+            continue
+        idx = IncrementalIndexer(
+            _cfg, m.repo, m.root, store=_retriever.store, embedder=_retriever.embedder
+        )
+        idx.reconcile()
+        w = RepoWatcher(idx)
+        w.start()
+        _watchers.append(w)
+
+
 def serve() -> None:
     import threading
 
-    # Warm the model without blocking the MCP initialize handshake.
-    threading.Thread(target=lambda: _retriever.embedder.model, daemon=True).start()
+    # Warm + reconcile + start watchers off-thread so the MCP initialize handshake isn't blocked.
+    threading.Thread(target=_warm_and_watch, daemon=True).start()
     mcp.run(transport="stdio")

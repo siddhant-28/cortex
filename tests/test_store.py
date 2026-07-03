@@ -22,7 +22,7 @@ def test_file_hash_changes_with_bytes():
 
 def test_manifest_roundtrip(tmp_path):
     cfg = Config(home=tmp_path)
-    m = Manifest(repo="demo", indexed_at="2026-07-02T00:00:00+00:00",
+    m = Manifest(repo="demo", root="/tmp/demo", indexed_at="2026-07-02T00:00:00+00:00",
                  files={"a.py": "h1", "b/c.ts": "h2"})
     save_manifest(cfg, m)
     got = load_manifest(cfg, "demo")

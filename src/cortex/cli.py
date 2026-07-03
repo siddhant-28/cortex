@@ -22,9 +22,6 @@ app = typer.Typer(
     add_completion=False,
 )
 
-_NOT_YET = "not implemented yet"
-
-
 @app.command()
 def chunk(
     repo_path: str = typer.Argument(..., help="Path to the repo to chunk."),
@@ -99,19 +96,9 @@ def build(
     import time
     from pathlib import Path
 
-    from .chunker import chunk_file
     from .config import load_config
-    from .discovery import walk
-    from .embedder import Embedder
-    from .store import (
-        Manifest,
-        Store,
-        file_hash,
-        load_manifest,
-        now_iso,
-        row_for,
-        save_manifest,
-    )
+    from .indexer import IncrementalIndexer
+    from .store import Store
 
     root = Path(repo_path)
     if not root.is_dir():
@@ -119,62 +106,17 @@ def build(
         raise typer.Exit(code=1)
 
     cfg = load_config()
-    store = Store(cfg)
-    manifest = load_manifest(cfg, alias)
     t0 = time.perf_counter()
-
-    # 1. Walk + hash; diff against manifest to find changed/new and removed files.
-    seen: dict[str, str] = {}
-    changed: list[tuple[str, str, str, bytes]] = []  # (path, language, hash, data)
-    files_total = 0
-    for sf in walk(root):
-        files_total += 1
-        data = sf.abspath.read_bytes()
-        fh = file_hash(data)
-        seen[sf.path] = fh
-        if manifest.files.get(sf.path) != fh:
-            changed.append((sf.path, sf.language, fh, data))
-    removed = [p for p in manifest.files if p not in seen]
-
-    if not changed and not removed:
-        typer.echo(f"{alias}: up to date ({files_total} files, {store.count(alias)} chunks, "
-                   f"{time.perf_counter() - t0:.1f}s)")
-        return
-
-    # 2. Chunk changed files.
-    chunks = []
-    for path, language, fh, data in changed:
-        for c in chunk_file(repo=alias, path=path, language=language, source=data):
-            chunks.append((c, fh))
-
-    # 3. Embed (loads the model only now).
-    typer.echo(f"{alias}: {len(changed)} changed, {len(removed)} removed, "
-               f"{len(chunks)} chunks to embed ...")
-    indexed_at = now_iso()
-    rows = []
-    t_embed = t_store = 0.0
-    if chunks:
-        te = time.perf_counter()
-        vectors = Embedder(cfg).encode([c.embed_text for c, _ in chunks], show_progress=True)
-        t_embed = time.perf_counter() - te
-        rows = [row_for(c, fh, vectors[i], indexed_at) for i, (c, fh) in enumerate(chunks)]
-
-    # 4. Replace changed/removed paths, then upsert new rows.
-    ts = time.perf_counter()
-    store.delete_paths(alias, [p for p, _, _, _ in changed] + removed)
-    store.upsert(rows)
-    if rows:
-        store.ensure_fts()
-    store.optimize()
-    t_store = time.perf_counter() - ts
-    typer.echo(f"  (embed {t_embed / 60:.1f} min, store+fts+optimize {t_store / 60:.1f} min)")
-
-    # 5. Persist manifest + report.
-    save_manifest(cfg, Manifest(repo=alias, indexed_at=indexed_at, files=seen))
+    stats = IncrementalIndexer(cfg, alias, root).reconcile(show_progress=True)
     mins = (time.perf_counter() - t0) / 60
-    size_mb = _dir_size_mb(cfg.db_dir)
-    typer.echo(f"{alias}: {files_total} files, {store.count(alias)} chunks, "
-               f"{mins:.1f} min, index {size_mb:.0f} MB on disk")
+
+    if stats["changed"] == 0 and stats["removed"] == 0:
+        typer.echo(f"{alias}: up to date ({stats['files']} files, "
+                   f"{Store(cfg).count(alias)} chunks, {mins * 60:.1f}s)")
+        return
+    typer.echo(f"{alias}: {stats['files']} files, {stats['changed']} changed, "
+               f"{stats['removed']} removed, {Store(cfg).count(alias)} chunks, "
+               f"{mins:.1f} min, index {_dir_size_mb(cfg.db_dir):.0f} MB on disk")
 
 
 @app.command()
@@ -212,7 +154,7 @@ def _dir_size_mb(path) -> float:
 def search(
     query: str = typer.Argument(..., help="Natural-language query."),
     repo: str | None = typer.Option(None, "--repo", help="Restrict to a repo alias."),
-    path_prefix: str | None = typer.Option(None, "--path-prefix", help="Restrict to a path prefix."),
+    path_prefix: str | None = typer.Option(None, "--path-prefix", help="Restrict to a path."),
     k: int = typer.Option(10, "-k", help="Number of results."),
     show: str = typer.Option("fused", "--show", help="Channel to inspect: dense|bm25|fused."),
 ) -> None:
@@ -243,9 +185,31 @@ def watch(
     repo_path: str = typer.Argument(..., help="Path to the repo to watch."),
     alias: str = typer.Option(..., "--alias", help="Repo alias to update."),
 ) -> None:
-    """[Phase 5] Incremental filesystem watcher."""
-    typer.echo(f"watch: {_NOT_YET} (Phase 5)")
-    raise typer.Exit(code=1)
+    """[Phase 5] Reconcile, then watch a repo and incrementally reindex on change."""
+    import time
+    from pathlib import Path
+
+    from .config import load_config
+    from .indexer import IncrementalIndexer
+    from .watcher import RepoWatcher
+
+    root = Path(repo_path)
+    if not root.is_dir():
+        typer.echo(f"not a directory: {repo_path}", err=True)
+        raise typer.Exit(code=1)
+
+    idx = IncrementalIndexer(load_config(), alias, root)
+    typer.echo(f"{alias}: reconciling ...")
+    typer.echo(f"{alias}: reconciled {idx.reconcile()}")
+    watcher = RepoWatcher(idx)
+    watcher.start()
+    typer.echo(f"{alias}: watching {root} (Ctrl-C to stop)")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        watcher.stop()
+        typer.echo("stopped")
 
 
 def main() -> None:

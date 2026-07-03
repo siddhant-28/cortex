@@ -12,7 +12,7 @@ def test_help_lists_all_subcommands():
         assert cmd in result.stdout
 
 
-def test_remaining_stubs_exit_nonzero():
-    # watch (Phase 5) is the last stub; it should exit non-zero, not crash.
-    # (Don't invoke `serve` — it now launches a blocking stdio server.)
-    assert runner.invoke(app, ["watch", "somepath", "--alias", "a"]).exit_code == 1
+def test_build_rejects_non_directory(tmp_path):
+    # All subcommands are implemented now; a bad build path should exit non-zero cleanly.
+    result = runner.invoke(app, ["build", str(tmp_path / "nope"), "--alias", "x"])
+    assert result.exit_code == 1

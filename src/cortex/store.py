@@ -89,6 +89,8 @@ class Store:
         ])
 
     def table(self):
+        # table_names() returns plain name strings; list_tables() (the non-deprecated name) returns
+        # a different shape in this version and breaks the membership check, so keep table_names().
         if TABLE not in self.db.table_names():
             return self.db.create_table(TABLE, schema=self._schema())
         return self.db.open_table(TABLE)
@@ -120,11 +122,14 @@ class Store:
         t = self.table()
         t.create_fts_index("fts_text", replace=True)
 
-    def optimize(self) -> None:
-        # Compact fragments so the index stays small. Do NOT force cleanup_older_than=0: pruning
-        # all prior versions immediately can delete data files still referenced and corrupt the
-        # table. Default retention prunes only genuinely-old versions, which is safe.
-        self.table().optimize()
+    def optimize(self, buffer_seconds: int = 60) -> None:
+        # Compact fragments and prune old versions so the index stays small under churn. Keep a
+        # safety buffer (default 60s): NEVER cleanup_older_than=0 — that can delete data files the
+        # current version still references and corrupt the table (learned the hard way, DECISIONS).
+        # A 60s buffer is far longer than any read, so no active query holds a pruned version.
+        from datetime import timedelta
+
+        self.table().optimize(cleanup_older_than=timedelta(seconds=buffer_seconds))
 
     def count(self, repo: str | None = None) -> int:
         t = self.table()
@@ -138,6 +143,7 @@ class Store:
 @dataclass
 class Manifest:
     repo: str
+    root: str  # absolute repo path, so `serve` can auto-watch indexed repos
     indexed_at: str
     files: dict[str, str]  # path -> file_hash
 
@@ -149,19 +155,26 @@ def _manifest_path(cfg: Config, repo: str) -> Path:
 def load_manifest(cfg: Config, repo: str) -> Manifest:
     p = _manifest_path(cfg, repo)
     if not p.exists():
-        return Manifest(repo=repo, indexed_at="", files={})
+        return Manifest(repo=repo, root="", indexed_at="", files={})
     data = json.loads(p.read_text())
-    return Manifest(repo=repo, indexed_at=data.get("indexed_at", ""), files=data.get("files", {}))
+    return Manifest(
+        repo=repo,
+        root=data.get("root", ""),
+        indexed_at=data.get("indexed_at", ""),
+        files=data.get("files", {}),
+    )
 
 
 def save_manifest(cfg: Config, manifest: Manifest) -> None:
     cfg.manifest_dir.mkdir(parents=True, exist_ok=True)
     p = _manifest_path(cfg, manifest.repo)
     tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(
-        {"repo": manifest.repo, "indexed_at": manifest.indexed_at, "files": manifest.files},
-        indent=0,
-    ))
+    tmp.write_text(json.dumps({
+        "repo": manifest.repo,
+        "root": manifest.root,
+        "indexed_at": manifest.indexed_at,
+        "files": manifest.files,
+    }, indent=0))
     os.replace(tmp, p)  # atomic
 
 
