@@ -10,6 +10,51 @@ All performance numbers in this log are measured on:
 - **Python:** 3.12.13 (managed by uv)
 - **uv:** 0.11.26
 
+## Phase 2 — COMPLETE (2026-07-03)
+
+- [x] `config.py` — `~/.cortex` paths, model/batch/seq-len knobs, `CORTEX_HOME` override, optional TOML.
+- [x] `embedder.py` — lazy model load, MPS>CUDA>CPU, batched L2-normalized encode.
+- [x] `store.py` — LanceDB `chunks` table, `chunk_id`/`file_hash`, upsert by id, batched delete by
+  `(repo,path)`, combined-column FTS, safe `optimize()`, JSON manifest (atomic).
+- [x] `cortex build --alias` (incremental via manifest) + `cortex status`.
+- [x] Unit tests for hashing + manifest (15 tests pass); vite + pandas builds + smoke query verified.
+
+**Acceptance (M1 Pro, 16 GB, MPS, seq=512):**
+
+- ⚠️ **Cold build pandas (1432 files, 32807 chunks): 20.4 min** — embed 20.3, store+fts+optimize 0.1.
+  MARGINAL MISS of the <20 min target (2% over). Embedding is ~27 chunks/s on the full corpus
+  (short-chunk microbenchmarks mislead: they hit 66 chunks/s). pandas is ~400K LOC, larger than the
+  criterion's 300K reference; a 300K repo extrapolates to ~15 min. Deliberately kept seq=512 to
+  protect retrieval quality (priority #1). Lever: `max_seq_length=256` → ~12 min but truncates long
+  chunks; the 256-vs-512 speed/quality call is deferred to Phase 3 where recall@k is measured.
+- [x] No-change rebuild: **0.3 s** (manifest short-circuit, model never loads) — target <30 s.
+- [x] Index size: **274 MB** both repos (pandas ~263 MB, vite 11 MB) — target <1 GB/repo.
+
+- **2026-07-03 — BUG (found + fixed): `optimize(cleanup_older_than=timedelta(0))` corrupted the
+  table.** Forcing immediate pruning of all prior versions deleted a data fragment still referenced
+  by the current version ("Not found: .../chunks.lance/data/...lance"). Fixed to plain
+  `table.optimize()` (default retention prunes only genuinely-old versions). Nuked + rebuilt clean.
+  Lesson: never `cleanup_older_than=0` on a live table.
+- **2026-07-03 — Batched `delete_paths` into one predicate per 500 paths** (`path IN (...)`).
+  One `delete()` per path created a table version each — disk + metadata bloat and slow.
+
+- **2026-07-02 — Pinned `transformers>=4.40,<5` (resolved 4.57.6).** DEVIATION FROM STACK: the
+  default model `jinaai/jina-embeddings-v2-base-code` uses `trust_remote_code` modeling that imports
+  `find_pruneable_heads_and_indices` from `transformers.pytorch_utils`, removed in transformers 5.x
+  (which sentence-transformers 5.6 pulled by default). Pinning <5 fixes it; model then loads on MPS
+  in ~18s, 768-dim, normalized, sensible code↔NL cosine (0.659). Kept the plan's pinned model.
+- **2026-07-02 — Combined `fts_text` column for BM25.** DEVIATION: LanceDB native FTS indexes a
+  single field only ("Native FTS indexes can only be created on a single field at a time"). Store
+  `fts_text = path + " " + symbol + " " + content` and index that one column — functionally equals
+  the data model's "FTS on content + symbol + path" (exact-identifier + path matching).
+- **2026-07-02 — `embed_text` not stored.** The data model lists it, but it is only needed at embed
+  time and duplicates `content`+prefix. Dropped from the table to keep index size down; kept
+  `content`, `file_hash`, `indexed_at`.
+- **2026-07-02 — Brute-force vector search (no ANN index yet).** Per PLAN: add IVF/HNSW only if
+  query latency > 200ms. Measured in Phase 3.
+- **2026-07-02 — `max_seq_length` default 512** (jina default is 8192). Bounds embed cost; most
+  retrieval signal is in the prefix + signature + start of body. Configurable; revisit in Phase 3.
+
 ## Phase 1 — COMPLETE (2026-07-02)
 
 - [x] `discovery.py` — os.walk + root `.gitignore` (pathspec) + `.git/` prune; launch extensions
