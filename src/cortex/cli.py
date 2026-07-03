@@ -212,12 +212,22 @@ def _dir_size_mb(path) -> float:
 def search(
     query: str = typer.Argument(..., help="Natural-language query."),
     repo: str | None = typer.Option(None, "--repo", help="Restrict to a repo alias."),
+    path_prefix: str | None = typer.Option(None, "--path-prefix", help="Restrict to a path prefix."),
     k: int = typer.Option(10, "-k", help="Number of results."),
     show: str = typer.Option("fused", "--show", help="Channel to inspect: dense|bm25|fused."),
 ) -> None:
     """[Phase 3] Hybrid retrieval (dense + BM25 + RRF)."""
-    typer.echo(f"search: {_NOT_YET} (Phase 3)")
-    raise typer.Exit(code=1)
+    from .config import load_config
+    from .retriever import Retriever, format_results
+
+    if show not in ("dense", "bm25", "fused"):
+        typer.echo("--show must be one of: dense, bm25, fused", err=True)
+        raise typer.Exit(code=2)
+
+    results = Retriever(load_config()).search(
+        query, k=k, repo=repo, path_prefix=path_prefix, channel=show
+    )
+    typer.echo(format_results(results))
 
 
 @app.command()
