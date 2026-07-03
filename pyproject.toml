@@ -17,6 +17,7 @@ dependencies = [
     "lancedb>=0.34.0",
     "einops>=0.8.2",
     "transformers>=4.40,<5",
+    "mcp>=1.28.1",
 ]
 
 [project.scripts]

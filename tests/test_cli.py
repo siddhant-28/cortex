@@ -13,5 +13,6 @@ def test_help_lists_all_subcommands():
 
 
 def test_remaining_stubs_exit_nonzero():
-    # serve (Phase 4) is still a stub; it should exit non-zero, not crash.
-    assert runner.invoke(app, ["serve"]).exit_code == 1
+    # watch (Phase 5) is the last stub; it should exit non-zero, not crash.
+    # (Don't invoke `serve` — it now launches a blocking stdio server.)
+    assert runner.invoke(app, ["watch", "somepath", "--alias", "a"]).exit_code == 1

@@ -10,6 +10,31 @@ All performance numbers in this log are measured on:
 - **Python:** 3.12.13 (managed by uv)
 - **uv:** 0.11.26
 
+## Phase 4 — COMPLETE (2026-07-03)
+
+- [x] `mcp_server.py` — FastMCP (mcp 1.28.1) over stdio, exactly two tools: `search_code` and
+  `index_status`, short descriptions. Shared Retriever; model warmed in a background thread at
+  `serve()` start (thread-safe double-checked load in Embedder).
+- [x] `cortex serve` wired; README quickstart + `claude mcp add` + CLAUDE.md steering snippet.
+- [x] Registered with the local Claude Code (`claude mcp add cortex ...`) → **"✓ Connected"**.
+- [x] Test: server registers exactly the two tools with short descriptions (21 tests pass).
+
+**Acceptance (E2E via the real MCP stdio client):**
+
+- [x] Both tools callable; `search_code("parse timezone-aware datetime to json table schema",
+  repo=pandas)` → `io/json/_table_schema.py:parse_table_schema` (correct), 344 tokens (within the
+  2,500 budget).
+- [x] Round-trip <1s perceived: warm call **0.96s**. First call after server start is ~6s while the
+  model finishes loading; the background warmup absorbs most of the ~18s cold load.
+- [~] "Claude Code calls the tool unprompted for discovery questions": can't be driven from this
+  headless session (needs a fresh interactive Claude Code session + the CLAUDE.md steering). Server
+  is registered and connected; this is the user's manual verification step.
+
+- **2026-07-03 — Background model warmup, not eager preload.** Loading the model before `mcp.run()`
+  would block the MCP initialize handshake (~18s) and risk a client timeout. Instead warm it in a
+  daemon thread after the server starts, so the handshake returns immediately and the model is ready
+  by the time the first query arrives.
+
 ## Phase 3 — COMPLETE (2026-07-03)
 
 - [x] `retriever.py` — dense top-50 + BM25 top-50 → RRF (1/(60+rank)); repo/lang/path-prefix

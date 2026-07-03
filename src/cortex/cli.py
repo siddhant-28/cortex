@@ -233,8 +233,9 @@ def search(
 @app.command()
 def serve() -> None:
     """[Phase 4] Run the FastMCP server over stdio."""
-    typer.echo(f"serve: {_NOT_YET} (Phase 4)")
-    raise typer.Exit(code=1)
+    from .mcp_server import serve as run_server
+
+    run_server()
 
 
 @app.command()

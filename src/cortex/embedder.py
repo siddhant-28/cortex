@@ -6,6 +6,7 @@ The model loads only when something needs encoding, so a no-op rebuild never pay
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Sequence
 
 import numpy as np
@@ -17,6 +18,7 @@ class Embedder:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
         self._model = None
+        self._lock = threading.Lock()
 
     def _device(self) -> str:
         if self.cfg.device:
@@ -31,16 +33,19 @@ class Embedder:
 
     @property
     def model(self):
+        # Lock so a background warmup thread and a query thread can't both load concurrently.
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
+            with self._lock:
+                if self._model is None:
+                    from sentence_transformers import SentenceTransformer
 
-            m = SentenceTransformer(
-                self.cfg.model_name,
-                trust_remote_code=self.cfg.trust_remote_code,
-                device=self._device(),
-            )
-            m.max_seq_length = self.cfg.max_seq_length
-            self._model = m
+                    m = SentenceTransformer(
+                        self.cfg.model_name,
+                        trust_remote_code=self.cfg.trust_remote_code,
+                        device=self._device(),
+                    )
+                    m.max_seq_length = self.cfg.max_seq_length
+                    self._model = m
         return self._model
 
     def encode(self, texts: Sequence[str], show_progress: bool = False) -> np.ndarray:

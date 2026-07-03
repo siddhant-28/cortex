@@ -3,9 +3,10 @@
 A **local-only** hybrid semantic code index and benchmark harness for Claude Code, exposed as an
 MCP server. Zero network egress, sub-second incremental freshness, multi-repo.
 
-> Status: **Phase 0 (scaffolding + benchmark dataset).** See [PLAN.md](PLAN.md) for the full
-> build plan and [DECISIONS.md](DECISIONS.md) for the running decision log. The README's full
-> prior-art section, quickstart, and headline benchmark numbers are written in Phase 8.
+> Status: **Phase 4 (MCP server) complete.** Local index + hybrid search + Claude Code integration
+> work; the agent A/B benchmark is Phase 6. See [PLAN.md](PLAN.md) for the full build plan and
+> [DECISIONS.md](DECISIONS.md) for the running decision log. The full prior-art section and headline
+> benchmark numbers are written in Phase 8.
 
 ## What it is
 
@@ -16,10 +17,30 @@ snippet under a strict token budget — so Claude reads full files itself. The h
 is an independent benchmark comparing stock Claude Code against Claude Code + cortex on real
 fault-localization tasks mined from git history.
 
-## Quickstart (once past Phase 0)
+## Quickstart
 
 ```bash
-uv run cortex --help
+# 1. Index a repo (discovery -> AST chunk -> embed -> LanceDB). Incremental on re-run.
+uv run cortex build /path/to/repo --alias myrepo
+uv run cortex status
+
+# 2. Try a search from the CLI.
+uv run cortex search "where are timezone-aware timestamps parsed" --repo myrepo
+
+# 3. Register the MCP server with Claude Code.
+claude mcp add cortex -- uv run --directory /path/to/cortex cortex serve
+```
+
+The server exposes exactly two tools: `search_code(query, k, repo?, path_prefix?)` and
+`index_status()`.
+
+### Steering snippet (add to your project's CLAUDE.md)
+
+```
+## Code search
+Before using Grep or Glob to FIND where something lives, call
+mcp cortex search_code with a natural-language query. Use Grep only
+for exact-string confirmation after cortex has localized the area.
 ```
 
 ## Prior art
